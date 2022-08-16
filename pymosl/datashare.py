@@ -12,7 +12,7 @@ import json
 import os
 import pymosl.connect as pmc
 
-# Get Drive Id from Azure Table Storage
+# Get Site or Drive Id from Azure Table Storage using spDriveIds Azure table
 def get_id_from_aztable(site_name, drive_name, return_field="Id", config=None):
     if config is None:
         config = pmc.get_config()
@@ -24,20 +24,10 @@ def get_id_from_aztable(site_name, drive_name, return_field="Id", config=None):
     table_service_client = TableServiceClient(endpoint=storage_endpoint, credential=credential)
     table_client = table_service_client.get_table_client(table_name="spDriveIds")
     try:
-        row_key = site_name.lower() + drive_name
+        row_key = site_name.lower() + "-" + drive_name.lower()
         return_value = table_client.get_entity(partition_key="1", row_key = row_key)[return_field]
     except:
         print("Drive Id not found in Azure Table Storage for {}".format(row_key))
-        try:
-            row_key = site_name.upper() + drive_name
-            return_value = table_client.get_entity(partition_key="1", row_key = row_key)[return_field]
-        except:
-            print("Drive Id not found in Azure Table Storage for {}".format(row_key))
-            try:
-                row_key = site_name + drive_name
-                return_value = table_client.get_entity(partition_key="1", row_key = row_key)[return_field]
-            except:
-                print("Drive Id not found in Azure Table Storage for {}".format(row_key))
     return return_value
 
 # Upload some files to a Sharepoint folder:
@@ -161,7 +151,7 @@ def get_tp_list(source_tables=None, ref_columns=None, config=None, conn=None):
             sql_query = "SELECT DISTINCT ([{}]) FROM {}".format(col, source)
             tp_list_temp = pd.read_sql(sql_query, con=conn)[col].tolist()
             for tp in tp_list_temp:
-                tp_list.append(tp)
+                tp_list.concat(tp)
     tp_list = np.unique(tp_list)
     return tp_list
 
@@ -169,7 +159,7 @@ def get_tp_list(source_tables=None, ref_columns=None, config=None, conn=None):
 def sp_data_upload_all(
     drive_name="Market Performance", folder_path="Data Share", config=None, 
     source_tables=None, ref_columns=None, data_date=None, folder_name=None, 
-    tp_list=None, headers=None, conn=None, save_log=True
+    tp_list=None, headers=None, conn=None, save_log=True, delete_temp = True
     ):
     overall_start = datetime.now()
     if config is None:
@@ -239,14 +229,14 @@ def sp_data_upload_all(
                         drive_name, folder_path, folder_name, filename)
                         ]
                 finally:
-                    if os.path.exists(filename):
+                    if os.path.exists(filename) and delete_temp:
                         os.remove(filename)
                         print("Removed file: {}".format(filename))
                     log_book_temp["EndTime"] = [datetime.now()]
-                    log_book = log_book.append(log_book_temp, ignore_index=True)
+                    log_book = log_book.concat(log_book_temp, ignore_index=True)
                     print("Moving onto next trading party...")
-    if save_log:
-        log_book.to_csv("log_book_{}.csv".format(data_date), index=False)
+                if save_log:
+                    log_book.to_csv("log_book_{}.csv".format(data_date), index=False)
     overall_finish = datetime.now()
     print("Total process time: {}".format(overall_finish - overall_start))
     return log_book

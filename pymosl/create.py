@@ -73,7 +73,7 @@ def get_all_drive_ids(config=None, headers=None, site_ids_df=None, save_as_csv=F
             print("Error getting drive ids for site id: ", row["Id"])
     print("Obtained drive ids, now processing dataframe...")
     drive_ids_df = pd.concat(drive_ids_df)
-    drive_ids_df.columns = drive_ids_df.columns.str.replace(pat = "(?<!^)(?=[A-Z])", repl = " ", regex = True).str.title().str.replace(pat = "[\.,' ']", repl = "", regex = True) # Converts columns to pascal case
+    drive_ids_df.columns = drive_ids_df.columns.str.replace(pat = "webex(?<!^)(?=[A-Z])", repl = " ", regex = True).str.title().str.replace(pat = "[\.,' ']", repl = "", regex = True) # Converts columns to pascal case
     drive_ids_df["CreatedDateTime"] = pd.to_datetime(drive_ids_df["CreatedDateTime"], format = "%Y-%m-%dT%H:%M:%SZ").dt.strftime("%Y-%m-%d %H:%M:%S")
     drive_ids_df["LastModifiedDateTime"] = pd.to_datetime(drive_ids_df["LastModifiedDateTime"], format = "%Y-%m-%dT%H:%M:%SZ").dt.strftime("%Y-%m-%d %H:%M:%S")
     drive_ids_df.replace(np.nan, None, inplace=True)
