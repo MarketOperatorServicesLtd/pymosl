@@ -12,8 +12,11 @@ import json
 import os
 import pymosl.connect as pmc
 
-# Get Site or Drive Id from Azure Table Storage using spDriveIds Azure table
+
 def get_id_from_aztable(site_name, drive_name, return_field="Id", config=None):
+    """
+    Get Site or Drive Id from Azure Table Storage using spDriveIds Azure table
+    """
     if config is None:
         config = pmc.get_config()
     # Access config for Azure Table Storage
@@ -30,16 +33,22 @@ def get_id_from_aztable(site_name, drive_name, return_field="Id", config=None):
         print("Drive Id not found in Azure Table Storage for {}".format(row_key))
     return return_value
 
-# Upload some files to a Sharepoint folder:
-# Checks if folder exists and if not Creates folder and otherwise proceed to get folder Id
+
 def get_or_create_folder_id(
     folder_path, folder_name, headers=None, drive_id=None, config=None, 
     site_name=None, drive_name=None
     ):
+    """
+    Upload some files to a Sharepoint folder:
+    Checks if folder exists and if not Creates folder and otherwise proceed to get folder Id
+    """
     if config is None:
         config = pmc.get_config()
     if drive_id is None:
-        drive_id = get_id_from_aztable(site_name=site_name, drive_name=drive_name, config=config)
+        drive_id = get_id_from_aztable(
+            site_name=site_name, drive_name=drive_name, 
+            config=config
+            )
     if headers is None:
         headers = pmc.get_graph_headers(config)
     graph_endpoint = config["GraphAPI"]["Endpoint"]
@@ -151,7 +160,27 @@ def get_tp_list(source_tables=None, ref_columns=None, config=None, conn=None):
             sql_query = "SELECT DISTINCT ([{}]) FROM {}".format(col, source)
             tp_list_temp = pd.read_sql(sql_query, con=conn)[col].tolist()
             for tp in tp_list_temp:
-                tp_list.concat(tp)
+                tp_list.append(tp)
+    tp_list = np.unique(tp_list)
+    return tp_list
+
+
+def get_tp_list(source_tables=None, ref_columns=None, config=None, conn=None):
+    if config is None:
+        config = pmc.get_config()
+    if conn is None:
+        conn = pmc.get_synapse_connection(config)
+    if source_tables is None:
+        source_tables = ("[dm].[TP_MeterData_MonthEnd]", "[dm].[TP_PremisesData_MonthEnd]", "[dm].[TP_VacancyData_MonthEnd]")
+    if ref_columns is None:
+        ref_columns = ("RetailerId", "WholesalerId")
+    tp_list = []
+    for source in source_tables:
+        for col in ref_columns:
+            sql_query = "SELECT DISTINCT ([{}]) FROM {}".format(col, source)
+            tp_list_temp = pd.read_sql(sql_query, con=conn)[col].tolist()
+            for tp in tp_list_temp:
+                tp_list.append(tp)
     tp_list = np.unique(tp_list)
     return tp_list
 
@@ -233,10 +262,82 @@ def sp_data_upload_all(
                         os.remove(filename)
                         print("Removed file: {}".format(filename))
                     log_book_temp["EndTime"] = [datetime.now()]
-                    log_book = log_book.concat(log_book_temp, ignore_index=True)
+                    log_book = log_book.append(log_book_temp, ignore_index=True)
                     print("Moving onto next trading party...")
                 if save_log:
                     log_book.to_csv("log_book_{}.csv".format(data_date), index=False)
     overall_finish = datetime.now()
     print("Total process time: {}".format(overall_finish - overall_start))
     return log_book
+
+
+def sp_update_file(
+    drive_id, item_id, new_folder_id, new_name, 
+    config=None, headers=None
+    ):
+    if config is None:
+        config = pmc.get_config()
+    if headers is None:
+        headers = pmc.get_graph_headers(config)
+    graph_endpoint = config["GraphAPI"]["Endpoint"]
+    url = f"{graph_endpoint}/drives/{drive_id}/items/{item_id}"
+    data = {
+        "name": new_name,
+        "parentReference": {
+            "id": new_folder_id
+            }
+        }
+    response = requests.put(url, headers=headers, json=data)
+    response.raise_for_status()
+    return response
+
+
+def sp_file_download(
+    site_name, drive_name, folder_path, folder_name, new_folder, filename_prefix="",
+    new_filename_prefix="", download=True, move_file=True, file_name=None, 
+    config=None, headers=None
+    ):
+    if config is None:
+        config = pmc.get_config()
+    if headers is None:
+        headers = pmc.get_graph_headers(config)
+    graph_endpoint = config["GraphAPI"]["Endpoint"]
+    drive_id = get_id_from_aztable(site_name=site_name, drive_name=drive_name, config=config)
+    folder_id = get_or_create_folder_id(
+        folder_path=folder_path, folder_name=folder_name, headers=headers, 
+        drive_id=drive_id, config=config, site_name=site_name, drive_name=drive_name
+        )
+    result = requests.get(f"{graph_endpoint}/drives/{drive_id}/items/{folder_id}/children", headers=headers)
+    result.raise_for_status()
+    file_names = []
+    children = result.json()["value"]
+    file_count = len(children)
+    if file_count > 0:
+        print("{} files found...".format(file_count))
+        for item in children:
+            file_name = item["name"]
+            item_id = item["id"]
+            if download:
+                #filename_prefix = site_name + "-" + drive_name + "-" + folder_name + "__"
+                amended_file_name = filename_prefix + file_name
+                download_url = item["@microsoft.graph.downloadUrl"]
+                response = requests.get(download_url)
+                response.raise_for_status()
+                with open(amended_file_name, "wb") as f:
+                    f.write(response.content)
+                print("Downloaded file: {}".format(amended_file_name))
+            if move_file:
+                new_folder_id = get_or_create_folder_id(
+                    folder_path=folder_path, folder_name=new_folder, headers=headers,
+                    drive_id=drive_id, config=config
+                    )
+                new_name = new_filename_prefix + file_name
+                sp_update_file(
+                    drive_id=drive_id, item_id=item_id, 
+                    new_folder_id=new_folder_id, new_name=new_name, 
+                    config=config, headers=headers
+                    )
+            file_names.append(file_name)
+    else:
+        print("No files found...")
+    return file_names

@@ -1,6 +1,6 @@
 import pymosl.connect as pmco
 import pymosl.create as pmcr
-import pymosl.datashare as pmds
+import pymosl.share as pmds
 
 if __name__ == "__main__":
     config = pmco.get_config()

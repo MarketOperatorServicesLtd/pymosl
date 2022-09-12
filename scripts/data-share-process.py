@@ -1,6 +1,6 @@
 
 import pymosl.connect as pmc
-import pymosl.datashare as pmd
+import pymosl.share as pmd
 
 config = pmc.get_config()
 headers = pmc.get_graph_headers()

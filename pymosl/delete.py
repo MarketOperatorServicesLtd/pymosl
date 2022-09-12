@@ -1,5 +1,5 @@
 import pymosl.connect as pmc
-import pymosl.datashare as pmd
+import pymosl.share as pmd
 import requests
 import urllib.parse
 
