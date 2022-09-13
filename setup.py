@@ -11,7 +11,7 @@ setup(
     long_description = "README.md",
     install_requires = [
         "requests", "azure-core", "azure-data-tables", 
-        "pandas", "datetime", "sqlalchemy", "pyodbc", 
-        "msal", "pandas", "numpy"
+        "datetime", "sqlalchemy", "pyodbc", "msal", 
+        "pandas", "numpy"
         ]
     )

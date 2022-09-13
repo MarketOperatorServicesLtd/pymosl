@@ -6,6 +6,7 @@ import msal
 import atexit
 import os
 
+
 # Get config file utility function
 def get_config(config_name=None):
     if config_name is None:
