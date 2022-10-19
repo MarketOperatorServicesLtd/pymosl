@@ -170,7 +170,8 @@ def get_tp_list(source_tables=None, ref_columns=None, config=None, conn=None):
 def sp_data_upload_all(
     drive_name="Market Performance", folder_path="Data Share", config=None, 
     source_tables=None, ref_columns=None, data_date=None, folder_name=None, 
-    tp_list=None, headers=None, conn=None, save_log=True, delete_temp = True
+    tp_list=None, headers=None, conn=None, data_type=None, save_log=True, 
+    delete_temp=True
     ):
     overall_start = datetime.now()
     if config is None:
@@ -191,12 +192,13 @@ def sp_data_upload_all(
             ]
         )
     if source_tables is None:
-        source_tables = ("[dm].[TP_MeterData_MonthEnd]", "[dm].[TP_PremisesData_MonthEnd]", "[dm].[TP_VacancyData_MonthEnd]")
+        source_tables = ("[dm].[TP_MeterData_Assured]", "[dm].[TP_PremisesData_Assured]", "[dm].[TP_VacancyData_Assured]")
     if ref_columns is None:
         ref_columns = ("RetailerId", "WholesalerId")
     for source in source_tables:
         log_book_temp = pd.DataFrame()
-        data_type = re.search("._(.*)_.", source).group(1)
+        if data_type is None:
+            data_type = re.search("._(.*)_.", source).group(1)
         if tp_list is None:
             tp_list = get_tp_list(
                 config=config, conn=conn, source_tables=source_tables, 
@@ -208,9 +210,11 @@ def sp_data_upload_all(
                 log_book_temp["DataType"] = [data_type]
                 log_book_temp["TradingParty"] = [tp]
                 log_book_temp["StartTime"] = [datetime.now()]
-                try:
-                    sql_query = "SELECT * FROM {} WHERE {} = ?;".format(source, col)
-                    log_book_temp["SQLquery"] = [sql_query]
+                sql_query = "SELECT * FROM {} WHERE {} = ?;".format(source, col)
+                log_book_temp["SQLquery"] = [sql_query]
+                log_book_temp["RowCount"] = None
+                log_book_temp["Filename"] = None
+                try:    
                     df = pd.read_sql(sql_query, conn, params=[tp])
                     df_row_count = len(df)
                     log_book_temp["RowCount"] = [df_row_count]
@@ -222,12 +226,13 @@ def sp_data_upload_all(
                             filename=filename, site_name=tp, drive_name=drive_name, 
                             folder_path=folder_path, folder_name=folder_name, headers=headers
                             )
+                        log_book_temp["Message"] = ["Success"]
                     else:
                         message = "No data for {} in column {} for table {}".format(tp, col, source)
                         print(message)
                         log_book_temp["Message"] = [message]
                 except:
-                    message = "Error uploading to SharePoint: {}".format(filename)
+                    message = "Error uploading to SharePoint: {} from {}".format(tp, source)
                     print(message)
                     log_book_temp["Status"] = ["Error"]
                     log_book_temp["FilePath"] = ["{}/{}/{}/{}".format(
@@ -300,7 +305,8 @@ def sp_file_download(
             file_name = item["name"]
             item_id = item["id"]
             if download:
-                #filename_prefix = site_name + "-" + drive_name + "-" + folder_name + "__"
+                if filename_prefix == "":
+                    filename_prefix = site_name + "-" + drive_name + "-" + folder_name + "__"
                 amended_file_name = filename_prefix + file_name
                 download_url = item["@microsoft.graph.downloadUrl"]
                 response = requests.get(download_url)
@@ -329,7 +335,7 @@ def data_assurance_process(
     config=None, headers=None, drive_name="Market Performance", folder_path="Data Assurance", 
     folder_name="New", new_folder_name="Processed", storage_name="data-assurance", tp_list=None,
     new_file_prefix="MOSL-PROCESSED__", move_file=True, download=True, save_log=True,
-    blob_path="data/raw/", included_extensions=[".csv", ".xlsx"], run_date=None
+    blob_path="data/raw/", included_extensions=[".xlsx"], run_date=None
     ):
     if config is None:
         config = pmc.get_config()
@@ -357,17 +363,17 @@ def data_assurance_process(
         log_book_temp["StartTime"] = [datetime.now()]
         try:
             file_names = sp_file_download(
-            config=config, headers=headers, site_name=site_name, drive_name=drive_name,
-            folder_path=folder_path, folder_name=folder_name, new_folder=new_folder_name,
-            new_filename_prefix=new_file_prefix, move_file=move_file, download=download
-            )
+                config=config, headers=headers, site_name=site_name, drive_name=drive_name,
+                folder_path=folder_path, folder_name=folder_name, new_folder=new_folder_name,
+                new_filename_prefix=new_file_prefix, move_file=move_file, download=download
+                )
             log_book_temp["FileNames"] = [file_names]
             for name in file_names:
                 print("downloaded " + name)
-            prefix = site_name + "_" + folder_path + "_" + folder_name + "__" 
             pmb.upload_to_blob(
-                config=config, blob_service_client=None, storage_name=storage_name, blob_path=blob_path, 
-                blob_prefix=prefix, file_list=None, file_dir=None, included_extensions=included_extensions
+                config=config, blob_service_client=None, storage_name=storage_name, 
+                blob_path=blob_path, file_list=None, file_dir=None, 
+                included_extensions=included_extensions
                 )
             log_book_temp["Status"] = ["Success"]
             log_book_temp["Downloaded"] = [download]
